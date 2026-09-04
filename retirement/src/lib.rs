@@ -227,7 +227,20 @@ impl RetirementContract {
         Ok(record)
     }
 
-    /// Retrieve a retirement record by its ID.
+    /// Retrieve a single retirement record by its unique ID.
+    ///
+    /// Looks up the retirement record stored under the given `id`. Returns the
+    /// full [`RetirementRecord`] if found, or an error if no record exists for
+    /// the provided identifier.
+    ///
+    /// # Arguments
+    /// * `id` - The unique 32-byte identifier of the retirement record.
+    ///
+    /// # Returns
+    /// The [`RetirementRecord`] associated with `id`, or an error.
+    ///
+    /// # Errors
+    /// * [`Error::RetirementNotFound`] - No record exists for the given `id`.
     pub fn get_retirement(env: Env, id: BytesN<32>) -> Result<RetirementRecord, Error> {
         env.storage()
             .persistent()
@@ -236,6 +249,14 @@ impl RetirementContract {
     }
 
     /// Total number of retirements recorded, across all projects.
+    ///
+    /// Returns the current value of the monotonic retirement counter, which
+    /// increments with each successful retirement. This count covers all
+    /// projects and is not filtered by project or vintage year.
+    ///
+    /// # Returns
+    /// The total number of retirement records created since the contract was
+    /// initialized. Returns `0` if no retirements have been recorded.
     pub fn total_retirements(env: Env) -> u32 {
         env.storage()
             .instance()
@@ -243,7 +264,19 @@ impl RetirementContract {
             .unwrap_or(0)
     }
 
-    /// Ids of all retirements for a project, in retirement order.
+    /// IDs of all retirements for a project, in retirement order.
+    ///
+    /// Returns the list of unique 32-byte record IDs for every retirement
+    /// associated with the given project, ordered chronologically by the
+    /// order in which they were created. An empty vector indicates no
+    /// retirements have been recorded for the project.
+    ///
+    /// # Arguments
+    /// * `project_id` - The project whose retirement IDs to retrieve.
+    ///
+    /// # Returns
+    /// A [`Vec<BytesN<32>>`] of retirement record IDs, in creation order.
+    /// Returns an empty vector if the project has no retirements.
     pub fn get_retirement_ids(env: Env, project_id: BytesN<32>) -> Vec<BytesN<32>> {
         env.storage()
             .persistent()
@@ -252,6 +285,19 @@ impl RetirementContract {
     }
 
     /// Full retirement records for a project, in retirement order.
+    ///
+    /// Fetches the complete [`RetirementRecord`] for every retirement
+    /// associated with the given project. Records are returned in creation
+    /// order (the same order as `get_retirement_ids`). If a record
+    /// referenced by an ID is missing from storage it is silently skipped.
+    ///
+    /// # Arguments
+    /// * `project_id` - The project whose retirement records to retrieve.
+    ///
+    /// # Returns
+    /// A [`Vec<RetirementRecord>`] of all retirement records for the project,
+    /// in chronological order. Returns an empty vector if the project has no
+    /// retirements.
     pub fn get_retirements_by_project(env: Env, project_id: BytesN<32>) -> Vec<RetirementRecord> {
         let ids = Self::get_retirement_ids(env.clone(), project_id);
         let mut records = Vec::new(&env);
