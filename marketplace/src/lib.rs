@@ -89,6 +89,16 @@ impl MarketplaceContract {
     /// * `creator` - The address funding the initial liquidity (must authorize).
     /// * `pool_id` - Unique pool identifier.
     /// * `config` - Pool configuration (tokens, initial liquidity, fee).
+    ///
+    /// # Returns
+    /// The newly created [`Pool`] with its initial reserves.
+    ///
+    /// # Errors
+    /// * [`Error::NonPositiveAmount`] – `initial_credit` or `initial_paired` ≤ 0.
+    /// * [`Error::InvalidConfig`] – `fee_bps` exceeds 10 000.
+    /// * [`Error::AlreadyRegistered`] – a pool with `pool_id` already exists.
+    /// * [`Error::InsufficientBalance`] – the creator lacks sufficient token
+    ///   balances or the token transfer failed.
     pub fn create_pool(
         env: Env,
         creator: Address,
@@ -187,6 +197,16 @@ impl MarketplaceContract {
     ///
     /// # Returns
     /// The amount of output tokens received.
+    ///
+    /// # Errors
+    /// * [`Error::NonPositiveAmount`] – `amount_in` ≤ 0, slippage protection
+    ///   triggered (`amount_out < min_amount_out`), or the computed output is
+    ///   zero.
+    /// * [`Error::PoolNotFound`] – no pool exists for `pool_id`.
+    /// * [`Error::Overflow`] – arithmetic overflow during fee or output
+    ///   calculation.
+    /// * [`Error::InsufficientBalance`] – token transfer failed (trader lacks
+    ///   input tokens or pool escrow lacks output tokens).
     pub fn swap(
         env: Env,
         trader: Address,
@@ -285,6 +305,18 @@ impl MarketplaceContract {
     /// * `pool_id` - The pool to add liquidity to.
     /// * `credit_amount` - Credit tokens to escrow (> 0).
     /// * `paired_amount` - Paired tokens to escrow (> 0).
+    ///
+    /// # Returns
+    /// `()` on success. The pool's reserves and the provider's contribution
+    /// record are updated.
+    ///
+    /// # Errors
+    /// * [`Error::NonPositiveAmount`] – `credit_amount` or `paired_amount` ≤ 0.
+    /// * [`Error::PoolNotFound`] – no pool exists for `pool_id`.
+    /// * [`Error::Overflow`] – arithmetic overflow when updating reserves or
+    ///   contribution totals.
+    /// * [`Error::InsufficientBalance`] – token transfer failed (provider
+    ///   lacks sufficient balances).
     pub fn add_liquidity(
         env: Env,
         provider: Address,
@@ -371,6 +403,17 @@ impl MarketplaceContract {
     ///
     /// # Returns
     /// `(credit_refunded, paired_refunded)`.
+    ///
+    /// # Errors
+    /// * [`Error::NonPositiveAmount`] – `credit_amount` ≤ 0, or the computed
+    ///   paired refund is zero.
+    /// * [`Error::PoolNotFound`] – no pool exists for `pool_id`.
+    /// * [`Error::NotFound`] – the provider has no LP contribution record for
+    ///   this pool.
+    /// * [`Error::InsufficientBalance`] – `credit_amount` exceeds the
+    ///   provider's recorded contribution.
+    /// * [`Error::Overflow`] – arithmetic overflow when computing the paired
+    ///   refund or updating reserves.
     pub fn remove_liquidity(
         env: Env,
         provider: Address,
@@ -488,6 +531,14 @@ impl MarketplaceContract {
     ///
     /// # Returns
     /// The id of the placed order.
+    ///
+    /// # Errors
+    /// * [`Error::NonPositiveAmount`] – `amount` ≤ 0 or `price` ≤ 0.
+    /// * [`Error::PoolNotFound`] – no pool exists for `pool_id`.
+    /// * [`Error::Overflow`] – arithmetic overflow when computing the escrow
+    ///   amount or during fill settlement.
+    /// * [`Error::InsufficientBalance`] – token transfer failed (trader lacks
+    ///   the asset to escrow).
     pub fn place_limit_order(
         env: Env,
         trader: Address,
@@ -671,10 +722,28 @@ impl MarketplaceContract {
 
     /// Cancel a resting order and refund its escrow to the trader.
     ///
+    /// The refunded amount corresponds to the unfilled remainder of the order.
+    /// For sell orders the credit tokens are returned; for buy orders the
+    /// paired-asset tokens (`remaining * price`) are returned.
+    ///
+    /// # Arguments
+    /// * `trader` - The address cancelling the order (must authorize and must
+    ///   be the order's owner).
+    /// * `order_id` - The id of the order to cancel.
+    ///
+    /// # Returns
+    /// `()` on success.
+    ///
     /// # Errors
-    /// * `NotFound` if the order does not exist
-    /// * `Unauthorized` if `trader` is not the order's owner
-    /// * `OrderClosed` if the order was already fully filled or cancelled
+    /// * [`Error::NotFound`] – no order exists for `order_id`.
+    /// * [`Error::Unauthorized`] – `trader` is not the order's owner.
+    /// * [`Error::OrderClosed`] – the order was already fully filled or
+    ///   previously cancelled.
+    /// * [`Error::PoolNotFound`] – the associated pool no longer exists.
+    /// * [`Error::InsufficientBalance`] – token transfer failed when refunding
+    ///   the escrow.
+    /// * [`Error::Overflow`] – arithmetic overflow when computing the refund
+    ///   amount for a buy order.
     pub fn cancel_order(env: Env, trader: Address, order_id: BytesN<32>) -> Result<(), Error> {
         trader.require_auth();
 
