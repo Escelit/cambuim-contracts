@@ -70,11 +70,12 @@ pub struct MarketplaceContract;
 #[contractimpl]
 impl MarketplaceContract {
     /// Initialize the marketplace. Can only be called once.
-    pub fn initialize(env: Env) {
+    pub fn initialize(env: Env) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Initialized) {
-            panic!("already initialized");
+            return Err(Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Initialized, &true);
+        Ok(())
     }
 
     /// Create a new liquidity pool for trading credit tokens against a paired asset.

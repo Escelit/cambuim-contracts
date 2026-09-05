@@ -29,7 +29,7 @@ fn initialize_sets_admin() {
 }
 
 #[test]
-fn initialize_panics_on_double_init() {
+fn initialize_rejects_double_init() {
     let env = Env::default();
     let admin = Address::generate(&env);
     let contract_id = env.register_contract(None, CreditTokenContract);
@@ -39,7 +39,11 @@ fn initialize_panics_on_double_init() {
 
     let admin2 = Address::generate(&env);
     let result = c.try_initialize(&admin2);
-    assert!(result.is_err(), "double-init must panic");
+    assert_eq!(
+        result,
+        Err(Ok(TokenError::AlreadyInitialized)),
+        "double-init must return AlreadyInitialized"
+    );
 }
 
 // ---- balance tests ----

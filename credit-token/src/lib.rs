@@ -45,6 +45,7 @@ pub enum TokenError {
     NegativeAmount = 102,
     Unauthorized = 103,
     AllowanceUnderflow = 104,
+    AlreadyInitialized = 105,
 }
 
 #[contract]
@@ -58,9 +59,9 @@ impl CreditTokenContract {
     /// SEP-41 metadata is seeded with defaults (`decimals` = 7,
     /// `name` = "Cambium Carbon Credit", `symbol` = "CAMB"); the admin may
     /// override it later via `set_metadata`.
-    pub fn initialize(env: Env, admin: Address) {
+    pub fn initialize(env: Env, admin: Address) -> Result<(), TokenError> {
         if env.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            return Err(TokenError::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
@@ -73,6 +74,7 @@ impl CreditTokenContract {
             .instance()
             .set(&DataKey::Symbol, &String::from_str(&env, DEFAULT_SYMBOL));
         env.storage().instance().set(&DataKey::TotalSupply, &0i128);
+        Ok(())
     }
 
     /// Return the admin (registry contract) address.

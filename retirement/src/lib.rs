@@ -46,15 +46,16 @@ pub struct RetirementContract;
 impl RetirementContract {
     /// Initialize the retirement contract with references to credit-token and
     /// registry contracts. Can only be called once.
-    pub fn initialize(env: Env, credit_token: Address, registry: Address) {
+    pub fn initialize(env: Env, credit_token: Address, registry: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Initialized) {
-            panic!("already initialized");
+            return Err(Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Initialized, &true);
         env.storage()
             .instance()
             .set(&DataKey::CreditToken, &credit_token);
         env.storage().instance().set(&DataKey::Registry, &registry);
+        Ok(())
     }
 
     /// Retire carbon credits permanently.
