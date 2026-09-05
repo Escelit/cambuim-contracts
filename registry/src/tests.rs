@@ -10,8 +10,14 @@ use super::{
 };
 use cambium_shared::Error;
 /// Register both the registry and credit-token contracts and wire them together.
-/// Returns (env, registry_contract_address, registry_client, credit_token_contract_address).
-fn setup() -> (Env, Address, RegistryContractClient<'static>, Address) {
+/// Returns (env, registry_contract_address, registry_client, credit_token_contract_address, admin).
+fn setup() -> (
+    Env,
+    Address,
+    RegistryContractClient<'static>,
+    Address,
+    Address,
+) {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -29,18 +35,21 @@ fn setup() -> (Env, Address, RegistryContractClient<'static>, Address) {
     let registry_id = env.register_contract(None, RegistryContract);
     let registry_client = RegistryContractClient::new(&env, &registry_id);
 
+    // The admin is the only address authorized to register projects.
+    let admin = Address::generate(&env);
+
     // Initialize credit-token with registry as admin (so registry can mint).
     token_client.initialize(&registry_id);
 
-    // Initialize registry with credit-token and zk-verifier addresses.
-    registry_client.initialize(&credit_token_id, &zk_verifier_id);
+    // Initialize registry with admin, credit-token and zk-verifier addresses.
+    registry_client.initialize(&admin, &credit_token_id, &zk_verifier_id);
 
     // SAFETY: env and clients share the same lifetime in tests; the 'static
     // transmute is safe because this test function owns env and it outlives
     // any use of the client.
     let registry_client: RegistryContractClient<'static> =
         unsafe { core::mem::transmute(registry_client) };
-    (env, registry_id, registry_client, credit_token_id)
+    (env, registry_id, registry_client, credit_token_id, admin)
 }
 
 fn sample_proof(env: &Env, project_id: &BytesN<32>) -> Proof {
@@ -95,13 +104,14 @@ fn initialize_sets_credit_token_address() {
 
     let registry_id = env.register_contract(None, RegistryContract);
     let client = RegistryContractClient::new(&env, &registry_id);
+    let admin = Address::generate(&env);
     let credit_token = Address::generate(&env);
     let zk_verifier = Address::generate(&env);
 
-    client.initialize(&credit_token, &zk_verifier);
+    client.initialize(&admin, &credit_token, &zk_verifier);
 
     // Second call should fail with a typed error.
-    let result = client.try_initialize(&credit_token, &zk_verifier);
+    let result = client.try_initialize(&admin, &credit_token, &zk_verifier);
     assert_eq!(
         result,
         Err(Ok(Error::AlreadyInitialized)),
@@ -113,11 +123,11 @@ fn initialize_sets_credit_token_address() {
 
 #[test]
 fn register_project_succeeds() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
 
-    client.register_project(&project);
+    client.register_project(&admin, &project);
 
     let fetched = client.get_project(&project_id);
     assert_eq!(fetched, project);
@@ -125,17 +135,31 @@ fn register_project_succeeds() {
 
 #[test]
 fn register_project_duplicate_fails() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
 
-    client.register_project(&project);
-    let result = client.try_register_project(&project);
+    client.register_project(&admin, &project);
+    let result = client.try_register_project(&admin, &project);
     assert_eq!(result, Err(Ok(Error::AlreadyRegistered)));
 }
 
 #[test]
+fn register_project_unauthorized_caller_fails() {
+    let (env, _, client, _, _admin) = setup();
+    let outsider = Address::generate(&env);
+    let project = make_project(&env, 3);
+
+    let result = client.try_register_project(&outsider, &project);
+    assert_eq!(result, Err(Ok(Error::Unauthorized)));
+
+    // Nothing was written for the rejected attempt.
+    let fetched = client.try_get_project(&project.id);
+    assert_eq!(fetched, Err(Ok(Error::NotFound)));
+}
+
+#[test]
 fn register_project_with_external_registry_ref() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = Project {
         id: BytesN::from_array(&env, &[2u8; 32]),
         methodology: Symbol::new(&env, "ARR"),
@@ -144,7 +168,7 @@ fn register_project_with_external_registry_ref() {
         verifying_key_version: 1,
     };
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
 
     let fetched = client.get_project(&project_id);
     assert_eq!(fetched, project);
@@ -154,7 +178,7 @@ fn register_project_with_external_registry_ref() {
 
 #[test]
 fn get_project_not_found() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, _admin) = setup();
     let missing = BytesN::from_array(&env, &[99u8; 32]);
     let result = client.try_get_project(&missing);
     assert_eq!(result, Err(Ok(Error::NotFound)));
@@ -164,7 +188,7 @@ fn get_project_not_found() {
 
 #[test]
 fn get_vintage_not_found() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, _admin) = setup();
     let project_id = BytesN::from_array(&env, &[1u8; 32]);
     let result = client.try_get_vintage(&project_id, &2025);
     assert_eq!(result, Err(Ok(Error::NotFound)));
@@ -174,10 +198,10 @@ fn get_vintage_not_found() {
 
 #[test]
 fn request_mint_creates_vintage_and_updates_issued() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     bootstrap_vkey(&env, &client);
 
     client.request_mint(&project_id, &2025, &1000, &sample_proof(&env, &project_id));
@@ -196,10 +220,10 @@ fn request_mint_creates_vintage_and_updates_issued() {
 
 #[test]
 fn request_mint_accumulates_issuance() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     bootstrap_vkey(&env, &client);
 
     client.request_mint(&project_id, &2025, &500, &sample_proof(&env, &project_id));
@@ -219,7 +243,7 @@ fn request_mint_accumulates_issuance() {
 
 #[test]
 fn request_mint_fails_on_missing_project() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, _admin) = setup();
     let missing = BytesN::from_array(&env, &[99u8; 32]);
     let result = client.try_request_mint(&missing, &2025, &1000, &sample_proof(&env, &missing));
     assert_eq!(result, Err(Ok(Error::NotFound)));
@@ -227,10 +251,10 @@ fn request_mint_fails_on_missing_project() {
 
 #[test]
 fn request_mint_fails_on_zero_amount() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
 
     let result = client.try_request_mint(&project_id, &2025, &0, &sample_proof(&env, &project_id));
     assert_eq!(result, Err(Ok(Error::NonPositiveAmount)));
@@ -238,10 +262,10 @@ fn request_mint_fails_on_zero_amount() {
 
 #[test]
 fn request_mint_fails_on_negative_amount() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
 
     let result =
         client.try_request_mint(&project_id, &2025, &-100, &sample_proof(&env, &project_id));
@@ -250,10 +274,10 @@ fn request_mint_fails_on_negative_amount() {
 
 #[test]
 fn request_mint_fails_on_empty_proof() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     bootstrap_vkey(&env, &client);
 
     let result = client.try_request_mint(&project_id, &2025, &1000, &empty_proof(&env));
@@ -262,10 +286,10 @@ fn request_mint_fails_on_empty_proof() {
 
 #[test]
 fn request_mint_fails_without_canonical_vkey() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     // No governance/vkey has ever been configured for the methodology.
 
     let result =
@@ -275,12 +299,12 @@ fn request_mint_fails_without_canonical_vkey() {
 
 #[test]
 fn request_mint_fails_on_stale_project_key_version() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     // Register the project at key version 1, but rotate the canonical key to
     // version 2 before minting.
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
 
     let signer = bootstrap_vkey(&env, &client);
     let proposal_id = client.propose_vkey_update(
@@ -300,10 +324,10 @@ fn request_mint_fails_on_stale_project_key_version() {
 
 #[test]
 fn request_mint_separate_vintages() {
-    let (env, _, client, _) = setup();
+    let (env, _, client, _, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     bootstrap_vkey(&env, &client);
 
     client.request_mint(&project_id, &2024, &500, &sample_proof(&env, &project_id));
@@ -337,10 +361,10 @@ fn request_mint_separate_vintages() {
 /// registry → credit-token mint path works.
 #[test]
 fn request_mint_issues_tokens_to_registry() {
-    let (env, registry_addr, client, credit_token_id) = setup();
+    let (env, registry_addr, client, credit_token_id, admin) = setup();
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     bootstrap_vkey(&env, &client);
 
     let token_client = cambium_credit_token::CreditTokenContractClient::new(&env, &credit_token_id);
@@ -358,7 +382,7 @@ fn governance_setup() -> (
     RegistryContractClient<'static>,
     soroban_sdk::Vec<Address>,
 ) {
-    let (env, _registry_addr, client, _credit_token_id) = setup();
+    let (env, _registry_addr, client, _credit_token_id, _admin) = setup();
     let signer1 = Address::generate(&env);
     let signer2 = Address::generate(&env);
     let signer3 = Address::generate(&env);
@@ -390,7 +414,7 @@ fn init_governance_succeeds() {
 
 #[test]
 fn init_governance_validates_config() {
-    let (env, _registry_addr, client, _credit_token_id) = setup();
+    let (env, _registry_addr, client, _credit_token_id, _admin) = setup();
 
     // threshold 0
     let signers = soroban_sdk::vec![&env, Address::generate(&env)];
@@ -738,7 +762,7 @@ fn get_proposal_returns_stored_proposal() {
 
 #[test]
 fn set_retirement_contract_requires_signer() {
-    let (env, _registry_addr, client, _credit_token_id) = setup();
+    let (env, _registry_addr, client, _credit_token_id, _admin) = setup();
     let signer = Address::generate(&env);
     client.init_governance(&1, &soroban_sdk::vec![&env, signer.clone()], &3600);
     let outsider = Address::generate(&env);
@@ -749,7 +773,7 @@ fn set_retirement_contract_requires_signer() {
 
 #[test]
 fn record_retirement_updates_vintage() {
-    let (env, _registry_addr, client, _credit_token_id) = setup();
+    let (env, _registry_addr, client, _credit_token_id, admin) = setup();
     let retirement = Address::generate(&env);
     let signer = bootstrap_vkey(&env, &client);
     client.set_retirement_contract(&signer, &retirement);
@@ -757,7 +781,7 @@ fn record_retirement_updates_vintage() {
     // Register project + mint 1000 so a vintage exists.
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     client.request_mint(&project_id, &2025, &1000, &sample_proof(&env, &project_id));
 
     // With mock auths, the registered retirement contract is authorized.
@@ -774,14 +798,14 @@ fn record_retirement_updates_vintage() {
 
 #[test]
 fn record_retirement_requires_authorized_contract() {
-    let (env, _registry_addr, client, _credit_token_id) = setup();
+    let (env, _registry_addr, client, _credit_token_id, admin) = setup();
     let retirement = Address::generate(&env);
     let signer = bootstrap_vkey(&env, &client);
     client.set_retirement_contract(&signer, &retirement);
 
     let project = make_project(&env, 1);
     let project_id = project.id.clone();
-    client.register_project(&project);
+    client.register_project(&admin, &project);
     client.request_mint(&project_id, &2025, &1000, &sample_proof(&env, &project_id));
 
     // Remove all mocked auths: recording without the retirement contract's
@@ -796,7 +820,7 @@ fn record_retirement_requires_authorized_contract() {
 
 #[test]
 fn record_retirement_unknown_vintage_fails() {
-    let (env, _registry_addr, client, _credit_token_id) = setup();
+    let (env, _registry_addr, client, _credit_token_id, _admin) = setup();
     let signer = Address::generate(&env);
     let retirement = Address::generate(&env);
     client.init_governance(&1, &soroban_sdk::vec![&env, signer.clone()], &3600);

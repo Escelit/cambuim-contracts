@@ -16,12 +16,18 @@ pub struct RegistryContract;
 
 #[contractimpl]
 impl RegistryContract {
-    /// Initialize the registry with the addresses of the credit-token and
-    /// zk-verifier contracts. Can only be called once.
-    pub fn initialize(env: Env, credit_token: Address, zk_verifier: Address) -> Result<(), Error> {
+    /// Initialize the registry with the admin, the credit-token address and
+    /// the zk-verifier contract address. Can only be called once.
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        credit_token: Address,
+        zk_verifier: Address,
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::CreditToken) {
             return Err(Error::AlreadyInitialized);
         }
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage()
             .instance()
             .set(&DataKey::CreditToken, &credit_token);
@@ -32,7 +38,22 @@ impl RegistryContract {
     }
 
     /// Register a new carbon project. Fails if the project id already exists.
-    pub fn register_project(env: Env, project: Project) -> Result<(), Error> {
+    ///
+    /// # Authorization
+    /// `admin` must be the initialized registry admin address. Because only the
+    /// admin can register projects, the protocol keeps control over which
+    /// projects are admitted.
+    pub fn register_project(env: Env, admin: Address, project: Project) -> Result<(), Error> {
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)?;
+        admin.require_auth();
+        if admin != stored_admin {
+            return Err(Error::Unauthorized);
+        }
+
         let key = DataKey::Project(project.id.clone());
         if env.storage().persistent().has(&key) {
             return Err(Error::AlreadyRegistered);

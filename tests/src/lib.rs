@@ -51,12 +51,14 @@ fn deploy_all() -> (
     // Wire credit-token: registry is admin
     token_client.initialize(&registry_id);
 
-    // Wire registry: credit-token and zk-verifier
-    registry_client.initialize(&credit_token_id, &zk_verifier_id);
+    // Wire registry: admin, credit-token and zk-verifier. The deployer
+    // (governance signer) doubles as the registry admin, so it can register
+    // projects.
+    let signer = soroban_sdk::Address::generate(&env);
+    registry_client.initialize(&signer, &credit_token_id, &zk_verifier_id);
 
     // Bootstrap governance and register the retirement contract so retirements
     // are recorded against vintage totals.
-    let signer = soroban_sdk::Address::generate(&env);
     registry_client.init_governance(&1, &soroban_sdk::vec![&env, signer.clone()], &3600);
     registry_client.set_retirement_contract(&signer, &retirement_id);
 
@@ -100,15 +102,8 @@ fn deploy_paired_token(env: &Env) -> soroban_sdk::Address {
 /// retirement → confirm retirement record and updated vintage totals in registry.
 #[test]
 fn full_lifecycle_register_mint_swap_retire() {
-    let (
-        env,
-        registry_id,
-        credit_token_id,
-        _zk_verifier_id,
-        marketplace_id,
-        retirement_id,
-        _signer,
-    ) = deploy_all();
+    let (env, registry_id, credit_token_id, _zk_verifier_id, marketplace_id, retirement_id, signer) =
+        deploy_all();
 
     let registry_client = cambium_registry::RegistryContractClient::new(&env, &registry_id);
     let token_client = cambium_credit_token::CreditTokenContractClient::new(&env, &credit_token_id);
@@ -125,7 +120,7 @@ fn full_lifecycle_register_mint_swap_retire() {
         external_registry_ref: None,
         verifying_key_version: 1,
     };
-    registry_client.register_project(&project);
+    registry_client.register_project(&signer, &project);
 
     // Verify project is registered
     let fetched_project = registry_client.get_project(&project_id);
@@ -369,7 +364,7 @@ fn duplicate_project_registration_fails() {
         _zk_verifier_id,
         _marketplace_id,
         _retirement_id,
-        _signer,
+        signer,
     ) = deploy_all();
     let registry_client = cambium_registry::RegistryContractClient::new(&env, &registry_id);
 
@@ -381,9 +376,9 @@ fn duplicate_project_registration_fails() {
         external_registry_ref: None,
         verifying_key_version: 1,
     };
-    registry_client.register_project(&project);
+    registry_client.register_project(&signer, &project);
 
-    let result = registry_client.try_register_project(&project);
+    let result = registry_client.try_register_project(&signer, &project);
     assert_eq!(result, Err(Ok(cambium_shared::Error::AlreadyRegistered)));
 }
 
@@ -608,7 +603,7 @@ fn shielded_retirement_rejects_nullifier_replay() {
         _zk_verifier_id,
         _marketplace_id,
         retirement_id,
-        _signer,
+        signer,
     ) = deploy_all();
     let registry_client = cambium_registry::RegistryContractClient::new(&env, &registry_id);
     let token_client = cambium_credit_token::CreditTokenContractClient::new(&env, &credit_token_id);
@@ -622,7 +617,7 @@ fn shielded_retirement_rejects_nullifier_replay() {
         external_registry_ref: None,
         verifying_key_version: 1,
     };
-    registry_client.register_project(&project);
+    registry_client.register_project(&signer, &project);
 
     let proof = Proof {
         proof_data: Bytes::from_array(&env, &[1u8, 2, 3, 4]),
@@ -659,7 +654,7 @@ fn allowlist_gates_credit_transfers() {
         _zk_verifier_id,
         _marketplace_id,
         _retirement_id,
-        _signer,
+        signer,
     ) = deploy_all();
     let registry_client = cambium_registry::RegistryContractClient::new(&env, &registry_id);
     let token_client = cambium_credit_token::CreditTokenContractClient::new(&env, &credit_token_id);
@@ -672,7 +667,7 @@ fn allowlist_gates_credit_transfers() {
         external_registry_ref: None,
         verifying_key_version: 1,
     };
-    registry_client.register_project(&project);
+    registry_client.register_project(&signer, &project);
 
     let proof = Proof {
         proof_data: Bytes::from_array(&env, &[1u8, 2, 3, 4]),

@@ -10,6 +10,7 @@ use soroban_sdk::{
 struct Stack {
     env: Env,
     registry_id: Address,
+    registry_admin: Address,
     credit_token_id: Address,
     retirement_id: Address,
 }
@@ -31,11 +32,13 @@ fn setup() -> Stack {
         cambium_zk_verifier::ZkVerifierContractClient::new(&env, &zk_verifier_id);
     zk_verifier_client.initialize();
 
-    // Deploy registry and wire it.
+    // Deploy registry and wire it. The registry admin is the only address
+    // authorized to register projects.
     let registry_id = env.register_contract(None, RegistryContract);
     let registry_client = RegistryContractClient::new(&env, &registry_id);
+    let registry_admin = Address::generate(&env);
     token_client.initialize(&registry_id);
-    registry_client.initialize(&credit_token_id, &zk_verifier_id);
+    registry_client.initialize(&registry_admin, &credit_token_id, &zk_verifier_id);
 
     // Bootstrap governance with a single signer.
     let signer = Address::generate(&env);
@@ -62,6 +65,7 @@ fn setup() -> Stack {
     Stack {
         env,
         registry_id,
+        registry_admin,
         credit_token_id,
         retirement_id,
     }
@@ -100,7 +104,7 @@ fn fund(stack: &Stack, from: &Address, amount: i128) {
         external_registry_ref: None,
         verifying_key_version: 1,
     };
-    registry_client.register_project(&project);
+    registry_client.register_project(&stack.registry_admin, &project);
     registry_client.request_mint(&project_id, &2025, &amount, &sample_proof(env, &project_id));
     token_client.transfer(&stack.registry_id, from, &amount);
 }
@@ -361,7 +365,7 @@ fn retire_multiple_projects() {
         external_registry_ref: None,
         verifying_key_version: 1,
     };
-    registry_client.register_project(&project2_struct);
+    registry_client.register_project(&stack.registry_admin, &project2_struct);
     registry_client.request_mint(&project2, &2025, &1000, &sample_proof(env, &project2));
     token_client.transfer(&stack.registry_id, &from, &500);
 
@@ -449,7 +453,7 @@ fn retire_ids_are_scoped_per_project() {
         external_registry_ref: None,
         verifying_key_version: 1,
     };
-    registry_client.register_project(&project2_struct);
+    registry_client.register_project(&stack.registry_admin, &project2_struct);
     registry_client.request_mint(&project2, &2025, &1000, &sample_proof(env, &project2));
     let token_client = CreditTokenContractClient::new(&stack.env, &stack.credit_token_id);
     token_client.transfer(&stack.registry_id, &from, &500);
