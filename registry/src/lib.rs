@@ -18,9 +18,9 @@ pub struct RegistryContract;
 impl RegistryContract {
     /// Initialize the registry with the addresses of the credit-token and
     /// zk-verifier contracts. Can only be called once.
-    pub fn initialize(env: Env, credit_token: Address, zk_verifier: Address) {
+    pub fn initialize(env: Env, credit_token: Address, zk_verifier: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::CreditToken) {
-            panic!("already initialized");
+            return Err(Error::AlreadyInitialized);
         }
         env.storage()
             .instance()
@@ -28,6 +28,7 @@ impl RegistryContract {
         env.storage()
             .instance()
             .set(&DataKey::ZkVerifier, &zk_verifier);
+        Ok(())
     }
 
     /// Register a new carbon project. Fails if the project id already exists.
@@ -275,7 +276,7 @@ impl RegistryContract {
             return Err(Error::InvalidConfig);
         }
         if env.storage().instance().has(&DataKey::GovernanceConfig) {
-            panic!("governance already initialized");
+            return Err(Error::AlreadyInitialized);
         }
 
         let config = GovernanceConfig {

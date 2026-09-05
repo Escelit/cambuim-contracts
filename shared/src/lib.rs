@@ -83,4 +83,6 @@ pub enum Error {
     /// does not match the function (e.g. executing a governance update via
     /// the verifying-key entry point).
     InvalidProposalTarget = 19,
+    /// The contract has already been initialized.
+    AlreadyInitialized = 20,
 }

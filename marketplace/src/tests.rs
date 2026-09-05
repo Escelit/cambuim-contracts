@@ -165,7 +165,7 @@ fn initialize_sets_initialized() {
 }
 
 #[test]
-fn initialize_panics_on_double_init() {
+fn initialize_rejects_double_init() {
     let env = Env::default();
     let contract_id = env.register_contract(None, MarketplaceContract);
     let client = MarketplaceContractClient::new(&env, &contract_id);
@@ -173,7 +173,11 @@ fn initialize_panics_on_double_init() {
     client.initialize();
 
     let result = client.try_initialize();
-    assert!(result.is_err(), "double-init must panic");
+    assert_eq!(
+        result,
+        Err(Ok(Error::AlreadyInitialized)),
+        "double-init must return AlreadyInitialized"
+    );
 }
 
 // ---- create_pool tests ----

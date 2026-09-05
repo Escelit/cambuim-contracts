@@ -100,9 +100,13 @@ fn initialize_sets_credit_token_address() {
 
     client.initialize(&credit_token, &zk_verifier);
 
-    // Second call should panic.
+    // Second call should fail with a typed error.
     let result = client.try_initialize(&credit_token, &zk_verifier);
-    assert!(result.is_err(), "double-init must fail");
+    assert_eq!(
+        result,
+        Err(Ok(Error::AlreadyInitialized)),
+        "double-init must return AlreadyInitialized"
+    );
 }
 
 // ---- register_project tests ----
@@ -428,7 +432,11 @@ fn init_governance_panics_on_double_init() {
     client.init_governance(&1, &signers, &3600);
 
     let result = client.try_init_governance(&1, &signers, &3600);
-    assert!(result.is_err(), "double init_governance must panic");
+    assert_eq!(
+        result,
+        Err(Ok(Error::AlreadyInitialized)),
+        "double init_governance must return AlreadyInitialized"
+    );
 }
 
 #[test]
