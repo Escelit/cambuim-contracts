@@ -11,7 +11,13 @@ use super::{
 use cambium_shared::Error;
 /// Register both the registry and credit-token contracts and wire them together.
 /// Returns (env, registry_contract_address, registry_client, credit_token_contract_address, admin).
-fn setup() -> (Env, Address, RegistryContractClient<'static>, Address, Address) {
+fn setup() -> (
+    Env,
+    Address,
+    RegistryContractClient<'static>,
+    Address,
+    Address,
+) {
     let env = Env::default();
     env.mock_all_auths();
 

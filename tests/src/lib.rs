@@ -102,15 +102,8 @@ fn deploy_paired_token(env: &Env) -> soroban_sdk::Address {
 /// retirement → confirm retirement record and updated vintage totals in registry.
 #[test]
 fn full_lifecycle_register_mint_swap_retire() {
-    let (
-        env,
-        registry_id,
-        credit_token_id,
-        _zk_verifier_id,
-        marketplace_id,
-        retirement_id,
-        signer,
-    ) = deploy_all();
+    let (env, registry_id, credit_token_id, _zk_verifier_id, marketplace_id, retirement_id, signer) =
+        deploy_all();
 
     let registry_client = cambium_registry::RegistryContractClient::new(&env, &registry_id);
     let token_client = cambium_credit_token::CreditTokenContractClient::new(&env, &credit_token_id);
