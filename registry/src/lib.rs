@@ -16,9 +16,14 @@ pub struct RegistryContract;
 
 #[contractimpl]
 impl RegistryContract {
-    /// Initialize the registry with the addresses of the credit-token and
-    /// zk-verifier contracts. Can only be called once.
-    pub fn initialize(env: Env, credit_token: Address, zk_verifier: Address) -> Result<(), Error> {
+    /// Initialize the registry with the admin, the credit-token address and
+    /// the zk-verifier contract address. Can only be called once.
+    pub fn initialize(
+        env: Env,
+        admin: Address,
+        credit_token: Address,
+        zk_verifier: Address,
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::CreditToken) {
             return Err(Error::AlreadyInitialized);
         }

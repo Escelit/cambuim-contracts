@@ -111,7 +111,7 @@ fn initialize_sets_credit_token_address() {
     client.initialize(&admin, &credit_token, &zk_verifier);
 
     // Second call should fail with a typed error.
-    let result = client.try_initialize(&credit_token, &zk_verifier);
+    let result = client.try_initialize(&admin, &credit_token, &zk_verifier);
     assert_eq!(
         result,
         Err(Ok(Error::AlreadyInitialized)),
