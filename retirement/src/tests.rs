@@ -125,7 +125,7 @@ fn initialize_sets_addresses() {
 }
 
 #[test]
-fn initialize_panics_on_double_init() {
+fn initialize_rejects_double_init() {
     let env = Env::default();
     let contract_id = env.register_contract(None, RetirementContract);
     let client = RetirementContractClient::new(&env, &contract_id);
@@ -136,7 +136,11 @@ fn initialize_panics_on_double_init() {
     client.initialize(&credit_token, &registry);
 
     let result = client.try_initialize(&credit_token, &registry);
-    assert!(result.is_err(), "double-init must panic");
+    assert_eq!(
+        result,
+        Err(Ok(Error::AlreadyInitialized)),
+        "double-init must return AlreadyInitialized"
+    );
 }
 
 // ---- retire tests ----
