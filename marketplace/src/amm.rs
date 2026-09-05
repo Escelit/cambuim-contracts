@@ -101,4 +101,47 @@ mod tests {
             Err(Error::NonPositiveAmount)
         );
     }
+
+    #[test]
+    fn calculate_swap_output_full_fee_returns_zero_net_in() {
+        // 100% fee (10000 bps): net_in becomes 0, so amount_out is 0.
+        let env = Env::default();
+        let pool = make_pool(&env, 1000, 5000, 10000);
+        assert_eq!(
+            calculate_swap_output(&pool, 100),
+            Err(Error::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn calculate_swap_output_thin_liquidity_rounds_to_zero() {
+        // Extremely thin liquidity where output rounds down to 0.
+        let env = Env::default();
+        let pool = make_pool(&env, 1, 1, 0);
+        // (1 * 1) / (1 + 1) = 1 / 2 = 0
+        assert_eq!(
+            calculate_swap_output(&pool, 1),
+            Err(Error::NonPositiveAmount)
+        );
+    }
+
+    #[test]
+    fn calculate_swap_output_max_i128_returns_overflow_without_panicking() {
+        let env = Env::default();
+        let pool = make_pool(&env, 1000, 5000, 0);
+        assert_eq!(
+            calculate_swap_output(&pool, i128::MAX),
+            Err(Error::Overflow)
+        );
+    }
+
+    #[test]
+    fn calculate_swap_output_zero_paired_reserves_fails() {
+        let env = Env::default();
+        let pool = make_pool(&env, 1000, 0, 0);
+        assert_eq!(
+            calculate_swap_output(&pool, 100),
+            Err(Error::NonPositiveAmount)
+        );
+    }
 }
