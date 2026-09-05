@@ -327,7 +327,7 @@ Abbreviated public interfaces (see each contract's `lib.rs` for full signatures 
 
 ```rust
 // registry
-fn register_project(env: Env, project: Project) -> Result<(), Error>;
+fn register_project(env: Env, admin: Address, project: Project) -> Result<(), Error>;
 fn request_mint(env: Env, project_id: BytesN<32>, vintage_year: u32,
                  amount: i128, proof: Proof) -> Result<(), Error>;
 // governance-gated protocol updates (multi-sig + timelock)

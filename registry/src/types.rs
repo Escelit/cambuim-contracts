@@ -97,6 +97,8 @@ pub struct Proposal {
 #[derive(Clone)]
 #[contracttype]
 pub enum DataKey {
+    /// The admin address authorized to register projects.
+    Admin,
     /// Registry initialisation flag — stores the credit-token address.
     CreditToken,
     /// Address of the zk-verifier contract.
