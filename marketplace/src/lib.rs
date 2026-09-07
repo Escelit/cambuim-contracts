@@ -808,7 +808,20 @@ impl MarketplaceContract {
         Ok(())
     }
 
-    /// Look up an order by id.
+    /// Look up a limit order by its id.
+    ///
+    /// Reads the order from persistent storage. Orders that were fully
+    /// filled, cancelled, or never placed are absent from storage and report
+    /// as missing rather than returning a closed order.
+    ///
+    /// # Arguments
+    /// * `order_id` - The id of the order to look up.
+    ///
+    /// # Returns
+    /// The [`Order`] with the matching `order_id`.
+    ///
+    /// # Errors
+    /// * [`Error::NotFound`] – no order exists for `order_id`.
     pub fn get_order(env: Env, order_id: BytesN<32>) -> Result<Order, Error> {
         env.storage()
             .persistent()

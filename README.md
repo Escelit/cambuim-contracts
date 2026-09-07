@@ -370,6 +370,7 @@ fn place_limit_order(env: Env, trader: Address, side: OrderSide, amount: i128,
                       price: i128, pool_id: BytesN<32>,
                       paired_token: Address) -> Result<BytesN<32>, Error>;
 fn cancel_order(env: Env, trader: Address, order_id: BytesN<32>) -> Result<(), Error>;
+fn get_order(env: Env, order_id: BytesN<32>) -> Result<Order, Error>;
 
 // retirement
 fn retire(env: Env, from: Address, project_id: BytesN<32>,
